@@ -32,3 +32,15 @@ def decode_refresh_token(token: str) -> int:
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type.")
     return int(payload["sub"])
+
+
+def get_current_user_id(token: str) -> int:
+    """Decode an access token and return the user id, or raise HTTPException on failure."""
+    from fastapi import HTTPException, status
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type.")
+    return int(payload["sub"])
