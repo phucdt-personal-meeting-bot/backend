@@ -139,7 +139,62 @@ Get the current authenticated user's profile.
 
 **Errors**
 
-| Status | Detail              |
-| ------ | ------------------- |
+| Status | Detail                   |
+| ------ | ------------------------ |
 | 401    | Invalid or expired token |
-| 403    | Account is disabled |
+| 403    | Account is disabled      |
+
+---
+
+## Translation
+
+### `POST /translation/upload`
+
+Upload an Excel file for translation. Requires authentication.
+
+**Headers**
+
+| Header          | Value                   |
+| --------------- | ----------------------- |
+| `Authorization` | `Bearer <access_token>` |
+| `Content-Type`  | `multipart/form-data`   |
+
+**Form Fields**
+
+| Field           | Type   | Required | Description                                          |
+| --------------- | ------ | -------- | ---------------------------------------------------- |
+| `file`          | file   | Yes      | Excel file (`.xlsx` or `.xls`)                       |
+| `language`      | string | Yes      | Target language: `vi`, `en`, or `ja`                 |
+| `prompt`        | string | Yes      | Overall prompt for the file                          |
+| `sheet_prompts` | string | Yes      | JSON array of per-sheet prompts (see format below)   |
+
+`sheet_prompts` format:
+```json
+[
+  { "sheet_name": "Sheet1", "prompt": "Translate product names" },
+  { "sheet_name": "Sheet2", "prompt": "Translate descriptions" }
+]
+```
+
+**Response** `201 Created`
+
+```json
+{
+  "file_key": "translations/<uuid>/<filename>",
+  "bucket": "bot-translations",
+  "language": "vi",
+  "prompt": "Translate this document",
+  "sheet_prompts": [
+    { "sheet_name": "Sheet1", "prompt": "Translate product names" }
+  ]
+}
+```
+
+**Errors**
+
+| Status | Detail                             |
+| ------ | ---------------------------------- |
+| 401    | Invalid or expired token           |
+| 403    | Account is disabled                |
+| 422    | Invalid file type or sheet_prompts |
+| 502    | S3 upload failed                   |

@@ -9,5 +9,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  s3:
+    image: luofuxiang/local-s3:2.4
+    restart: unless-stopped
+    environment:
+      MODE: PERSISTENCE
+      LOCAL_S3_LOGGING_LEVEL: info
+    ports:
+      - "8080:80"
+    volumes:
+      - s3_data:/data
+
 volumes:
   postgres_data:
+  s3_data:
