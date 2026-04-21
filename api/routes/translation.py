@@ -1,12 +1,17 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+import math
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user
 from core.s3 import BUCKET_NAME, ensure_bucket_exists, get_s3_client
+from crud.translation_job import create_job, get_job, get_jobs_by_user
+from db.session import get_db
 from models.user import User
-from schemas.translation import Language, SheetPrompt, TranslationUploadResponse
+from schemas.translation import Language, PaginatedJobsResponse, SheetPrompt, TranslationJobResponse
 
 ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
@@ -16,13 +21,14 @@ ALLOWED_CONTENT_TYPES = {
 router = APIRouter(prefix="/translation", tags=["translation"])
 
 
-@router.post("/upload", response_model=TranslationUploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=TranslationJobResponse, status_code=status.HTTP_201_CREATED)
 async def upload(
     file: UploadFile,
     language: Language = Form(...),
     prompt: str = Form(...),
     sheet_prompts: str = Form(..., description='JSON array, e.g. [{"sheet_name":"Sheet1","prompt":"..."}]'),
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -57,10 +63,42 @@ async def upload(
             detail=f"Failed to upload file to S3: {e}",
         )
 
-    return TranslationUploadResponse(
-        file_key=file_key,
-        bucket=BUCKET_NAME,
+    job = await create_job(
+        db=db,
+        user_id=current_user.id,
         language=language,
         prompt=prompt,
         sheet_prompts=parsed_sheet_prompts,
+        file_key=file_key,
+        bucket=BUCKET_NAME,
     )
+    return job
+
+
+@router.get("/jobs", response_model=PaginatedJobsResponse)
+async def list_jobs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    items, total = await get_jobs_by_user(db, current_user.id, page, page_size)
+    return PaginatedJobsResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=math.ceil(total / page_size) if total else 0,
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=TranslationJobResponse)
+async def get_job_status(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    job = await get_job(db, job_id)
+    if not job or job.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    return job

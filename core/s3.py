@@ -11,6 +11,9 @@ BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "bot-translations")
 # Command to check files in bucket:
 # aws s3 ls s3://meeting-bot --recursive --endpoint-url http://localhost:8080 --no-sign-request
 
+# Command to delete single file in bucket:
+# aws s3 rm s3://meeting-bot/2024-06-17T12:00:00Z.json --endpoint-url http://localhost:8080 --no-sign-request
+
 
 def get_s3_client():
     endpoint_url = os.getenv("S3_ENDPOINT_URL")

@@ -9,7 +9,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from db.base import Base
-from models import user  # noqa: F401 — ensures models are registered
+from models import translation_job, user  # noqa: F401 — ensures models are registered
 
 load_dotenv()
 

@@ -92,9 +92,9 @@ Exchange a refresh token for a new token pair.
 
 **Request Body**
 
-| Field   | Type   | Required | Description           |
-| ------- | ------ | -------- | --------------------- |
-| `token` | string | Yes      | Valid refresh token   |
+| Field   | Type   | Required | Description         |
+| ------- | ------ | -------- | ------------------- |
+| `token` | string | Yes      | Valid refresh token |
 
 **Response** `200 OK`
 
@@ -108,11 +108,11 @@ Exchange a refresh token for a new token pair.
 
 **Errors**
 
-| Status | Detail                          |
-| ------ | ------------------------------- |
+| Status | Detail                           |
+| ------ | -------------------------------- |
 | 401    | Invalid or expired refresh token |
-| 401    | User not found                  |
-| 403    | Account is disabled             |
+| 401    | User not found                   |
+| 403    | Account is disabled              |
 
 ---
 
@@ -122,8 +122,8 @@ Get the current authenticated user's profile.
 
 **Headers**
 
-| Header          | Value                  |
-| --------------- | ---------------------- |
+| Header          | Value                   |
+| --------------- | ----------------------- |
 | `Authorization` | `Bearer <access_token>` |
 
 **Response** `200 OK`
@@ -148,25 +148,26 @@ Get the current authenticated user's profile.
 
 ## Translation
 
+All translation endpoints require authentication via `Authorization: Bearer <access_token>`.
+
 ### `POST /translation/upload`
 
-Upload an Excel file for translation. Requires authentication.
+Upload an Excel file and create a translation job.
 
 **Headers**
 
-| Header          | Value                   |
-| --------------- | ----------------------- |
-| `Authorization` | `Bearer <access_token>` |
-| `Content-Type`  | `multipart/form-data`   |
+| Header         | Value                 |
+| -------------- | --------------------- |
+| `Content-Type` | `multipart/form-data` |
 
 **Form Fields**
 
-| Field           | Type   | Required | Description                                          |
-| --------------- | ------ | -------- | ---------------------------------------------------- |
-| `file`          | file   | Yes      | Excel file (`.xlsx` or `.xls`)                       |
-| `language`      | string | Yes      | Target language: `vi`, `en`, or `ja`                 |
-| `prompt`        | string | Yes      | Overall prompt for the file                          |
-| `sheet_prompts` | string | Yes      | JSON array of per-sheet prompts (see format below)   |
+| Field           | Type   | Required | Description                                        |
+| --------------- | ------ | -------- | -------------------------------------------------- |
+| `file`          | file   | Yes      | Excel file (`.xlsx` or `.xls`)                     |
+| `language`      | string | Yes      | Target language: `vi`, `en`, or `ja`               |
+| `prompt`        | string | Yes      | Overall prompt for the file                        |
+| `sheet_prompts` | string | Yes      | JSON array of per-sheet prompts (see format below) |
 
 `sheet_prompts` format:
 ```json
@@ -180,13 +181,19 @@ Upload an Excel file for translation. Requires authentication.
 
 ```json
 {
-  "file_key": "translations/<uuid>/<filename>",
-  "bucket": "bot-translations",
+  "id": 1,
+  "status": "pending",
   "language": "vi",
   "prompt": "Translate this document",
   "sheet_prompts": [
     { "sheet_name": "Sheet1", "prompt": "Translate product names" }
-  ]
+  ],
+  "file_key": "translations/<uuid>/<filename>",
+  "bucket": "meeting-bot",
+  "result_file_key": null,
+  "error": null,
+  "created_at": "2026-04-15T00:00:00Z",
+  "updated_at": "2026-04-15T00:00:00Z"
 }
 ```
 
@@ -198,3 +205,75 @@ Upload an Excel file for translation. Requires authentication.
 | 403    | Account is disabled                |
 | 422    | Invalid file type or sheet_prompts |
 | 502    | S3 upload failed                   |
+
+---
+
+### `GET /translation/jobs`
+
+List all translation jobs for the current user, sorted newest to oldest.
+
+**Query Parameters**
+
+| Param       | Type    | Default | Constraints | Description       |
+| ----------- | ------- | ------- | ----------- | ----------------- |
+| `page`      | integer | `1`     | ≥ 1         | Page number       |
+| `page_size` | integer | `20`    | 1–100       | Items per page    |
+
+**Response** `200 OK`
+
+```json
+{
+  "items": [ { "id": 1, "status": "pending", "..." } ],
+  "total": 42,
+  "page": 1,
+  "page_size": 20,
+  "pages": 3
+}
+```
+
+**Errors**
+
+| Status | Detail                   |
+| ------ | ------------------------ |
+| 401    | Invalid or expired token |
+| 403    | Account is disabled      |
+
+---
+
+### `GET /translation/jobs/{job_id}`
+
+Get the status and details of a specific translation job.
+
+**Path Parameters**
+
+| Param    | Type    | Description |
+| -------- | ------- | ----------- |
+| `job_id` | integer | Job ID      |
+
+**Response** `200 OK`
+
+```json
+{
+  "id": 1,
+  "status": "pending",
+  "language": "vi",
+  "prompt": "Translate this document",
+  "sheet_prompts": [
+    { "sheet_name": "Sheet1", "prompt": "Translate product names" }
+  ],
+  "file_key": "translations/<uuid>/<filename>",
+  "bucket": "meeting-bot",
+  "result_file_key": null,
+  "error": null,
+  "created_at": "2026-04-15T00:00:00Z",
+  "updated_at": "2026-04-15T00:00:00Z"
+}
+```
+
+**Errors**
+
+| Status | Detail                   |
+| ------ | ------------------------ |
+| 401    | Invalid or expired token |
+| 403    | Account is disabled      |
+| 404    | Job not found            |
