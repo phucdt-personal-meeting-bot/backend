@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user
+from tasks.translation import run_translation
 from core.s3 import BUCKET_NAME, ensure_bucket_exists, get_s3_client
 from crud.translation_job import create_job, get_job, get_jobs_by_user
 from db.session import get_db
@@ -72,6 +73,8 @@ async def upload(
         file_key=file_key,
         bucket=BUCKET_NAME,
     )
+
+    run_translation.delay(job.id)
     return job
 
 
