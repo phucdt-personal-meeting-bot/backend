@@ -37,3 +37,8 @@ class TranslationJobResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class JobDownloadResponse(BaseModel):
+    original_url: str
+    result_url: str | None = None

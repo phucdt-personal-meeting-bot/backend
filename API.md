@@ -277,3 +277,36 @@ Get the status and details of a specific translation job.
 | 401    | Invalid or expired token |
 | 403    | Account is disabled      |
 | 404    | Job not found            |
+
+---
+
+### `GET /translation/jobs/{job_id}/download`
+
+Get presigned download URLs for the original and translated files.
+
+**Path Parameters**
+
+| Param    | Type    | Description |
+| -------- | ------- | ----------- |
+| `job_id` | integer | Job ID      |
+
+**Response** `200 OK`
+
+```json
+{
+  "original_url": "https://s3.amazonaws.com/bucket/translations/.../file.xlsx?...",
+  "result_url": "https://s3.amazonaws.com/bucket/translations/.../translated_file.xlsx?..."
+}
+```
+
+`result_url` is `null` if the job has not completed yet.
+
+URLs expire after 1 hour by default (configurable via `PRESIGNED_URL_EXPIRY` env var in seconds).
+
+**Errors**
+
+| Status | Detail                   |
+| ------ | ------------------------ |
+| 401    | Invalid or expired token |
+| 403    | Account is disabled      |
+| 404    | Job not found            |

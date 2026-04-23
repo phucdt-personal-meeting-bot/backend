@@ -32,6 +32,17 @@ def get_s3_client():
     return boto3.client("s3", **kwargs)
 
 
+PRESIGNED_URL_EXPIRY = int(os.getenv("PRESIGNED_URL_EXPIRY", "3600"))
+
+
+def generate_presigned_url(s3_client, bucket: str, key: str) -> str:
+    return s3_client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=PRESIGNED_URL_EXPIRY,
+    )
+
+
 def ensure_bucket_exists(s3_client) -> None:
     """Create the bucket if it doesn't exist (useful for local development)."""
     existing = [b["Name"] for b in s3_client.list_buckets().get("Buckets", [])]

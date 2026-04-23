@@ -9,11 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user
 from tasks.translation import run_translation
-from core.s3 import BUCKET_NAME, ensure_bucket_exists, get_s3_client
+from core.s3 import BUCKET_NAME, ensure_bucket_exists, generate_presigned_url, get_s3_client
 from crud.translation_job import create_job, get_job, get_jobs_by_user
 from db.session import get_db
 from models.user import User
-from schemas.translation import Language, PaginatedJobsResponse, SheetPrompt, TranslationJobResponse
+from schemas.translation import JobDownloadResponse, Language, PaginatedJobsResponse, SheetPrompt, TranslationJobResponse
 
 ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
@@ -106,3 +106,20 @@ async def get_job_status(
     if not job or job.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
     return job
+
+
+@router.get("/jobs/{job_id}/download", response_model=JobDownloadResponse)
+async def download_job_files(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    job = await get_job(db, job_id)
+    if not job or job.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+
+    s3 = get_s3_client()
+    original_url = generate_presigned_url(s3, job.bucket, job.file_key)
+    result_url = generate_presigned_url(s3, job.bucket, job.result_file_key) if job.result_file_key else None
+
+    return JobDownloadResponse(original_url=original_url, result_url=result_url)
