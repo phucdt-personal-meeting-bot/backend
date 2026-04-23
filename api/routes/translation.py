@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 
@@ -74,7 +75,7 @@ async def upload(
         bucket=BUCKET_NAME,
     )
 
-    run_translation.delay(job.id)
+    await asyncio.to_thread(run_translation.delay, job.id)
     return job
 
 
