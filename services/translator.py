@@ -11,6 +11,11 @@ CHARS_PER_TOKEN_CJK = 1.5
 
 MAX_CELLS_PER_CHUNK = 200
 MAX_RETRIES = 3
+MIN_CHUNK_SIZE = 5
+
+
+class OutputTruncatedError(Exception):
+    pass
 
 
 def _estimate_tokens(text: str) -> int:
@@ -19,22 +24,28 @@ def _estimate_tokens(text: str) -> int:
     return math.ceil(cjk_chars / CHARS_PER_TOKEN_CJK + other_chars / CHARS_PER_TOKEN_EN)
 
 
-def _chunk_cells(cells: list[dict], max_tokens: int) -> list[list[dict]]:
-    """Split cells into chunks that fit within the token budget and cell count limit."""
+def _chunk_cells(cells: list[dict], max_input_tokens: int) -> list[list[dict]]:
+    """Split cells into chunks that fit within token budgets and cell count limit."""
+    output_budget = int(BEDROCK_MAX_TOKENS * 0.9)
     chunks = []
     current_chunk = []
-    current_tokens = 0
+    current_input_tokens = 0
+    current_output_tokens = 0
 
     for cell in cells:
-        cell_tokens = _estimate_tokens(json.dumps(cell, ensure_ascii=False))
+        cell_json = json.dumps(cell, ensure_ascii=False)
+        cell_tokens = _estimate_tokens(cell_json)
         at_cell_limit = len(current_chunk) >= MAX_CELLS_PER_CHUNK
-        at_token_limit = current_chunk and current_tokens + cell_tokens > max_tokens
-        if at_cell_limit or at_token_limit:
+        at_input_limit = current_chunk and current_input_tokens + cell_tokens > max_input_tokens
+        at_output_limit = current_chunk and current_output_tokens + cell_tokens > output_budget
+        if at_cell_limit or at_input_limit or at_output_limit:
             chunks.append(current_chunk)
             current_chunk = []
-            current_tokens = 0
+            current_input_tokens = 0
+            current_output_tokens = 0
         current_chunk.append(cell)
-        current_tokens += cell_tokens
+        current_input_tokens += cell_tokens
+        current_output_tokens += cell_tokens
 
     if current_chunk:
         chunks.append(current_chunk)
@@ -94,6 +105,11 @@ def _call_bedrock(client, full_system: str, user_message: str) -> list[dict]:
 
         raw = response["output"]["message"]["content"][0]["text"]
         stop_reason = response.get("stopReason", "")
+        output_tokens = response.get("usage", {}).get("outputTokens", 0)
+
+        if stop_reason == "max_tokens" or output_tokens >= BEDROCK_MAX_TOKENS:
+            print(f"  Output truncated (tokens={output_tokens}, max={BEDROCK_MAX_TOKENS})")
+            raise OutputTruncatedError(f"Output truncated at {output_tokens} tokens")
 
         try:
             return json.loads(_extract_json(raw))
@@ -103,7 +119,6 @@ def _call_bedrock(client, full_system: str, user_message: str) -> list[dict]:
 
             print(f"  JSON parse error (attempt {attempt + 1}/{MAX_RETRIES}, stop={stop_reason}): {e}")
 
-            # Ask the model to fix its output
             messages = [
                 {"role": "user", "content": [{"text": user_message}]},
                 {"role": "assistant", "content": [{"text": raw}]},
@@ -137,13 +152,23 @@ def translate_sheet(
     client = get_bedrock_client()
     result = {}
 
-    for i, chunk in enumerate(chunks):
-        print(f'  Translating {"chunk " + str(i + 1) + "/" + str(total_chunks) if total_chunks > 1 else sheet_name} ({len(chunk)} cells)')
+    queue = list(enumerate(chunks))
+    while queue:
+        i, chunk = queue.pop(0)
+        label = f"chunk {i + 1}" if total_chunks > 1 or len(chunks) > 1 else sheet_name
+        print(f'  Translating {label} ({len(chunk)} cells)')
 
-        user_message = _build_sheet_user_message(chunk, sheet_name, file_prompt, sheet_prompt)
-        translated = _call_bedrock(client, full_system, user_message)
-
-        for cell in translated:
-            result[cell["ref"]] = cell["text"]
+        try:
+            user_message = _build_sheet_user_message(chunk, sheet_name, file_prompt, sheet_prompt)
+            translated = _call_bedrock(client, full_system, user_message)
+            for cell in translated:
+                result[cell["ref"]] = cell["text"]
+        except OutputTruncatedError:
+            if len(chunk) <= MIN_CHUNK_SIZE:
+                raise ValueError(f"Output truncated even with {len(chunk)} cells — cells may be too large")
+            mid = len(chunk) // 2
+            print(f"  Splitting chunk ({len(chunk)} cells) into 2 halves")
+            queue.insert(0, (i, chunk[:mid]))
+            queue.insert(1, (i, chunk[mid:]))
 
     return result
